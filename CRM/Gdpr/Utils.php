@@ -446,6 +446,12 @@ WHERE url.time_stamp > '{$date}'";
 
 
       $fieldName = $field['name'];
+
+      //#235: - Keeping the is_deceased value as it is
+      if($fieldName == 'is_deceased'){
+        continue;
+      }
+
       $params[$fieldName] = '';
     }
 
@@ -508,21 +514,19 @@ WHERE url.time_stamp > '{$date}'";
     // Activity Delete API call with activity types as array is not working as expected
     // So get activities list and then delete them individually
     // Get API call with activity type id is giving all activities
-    foreach($actTypeIds as $actTypeId) {
-      $result = self::CiviCRMAPIWrapper('Activity', 'get', array(
-        'contact_id' => $contactId,
-        'options' => array('limit' => 0),
-      ));
-      if (!empty($result['values'])) {
-        foreach ($result['values'] as $data) {
-          // Check if the activity type needs to be deleted
-          if (in_array($data['activity_type_id'], $actTypeIds)) {
-            self::CiviCRMAPIWrapper('Activity', 'delete', array(
-              'id' => $data['id'],
-              'sequential' => 1,
-            ));
-          }
-        }
+    $results = self::CiviCRMAPIWrapper('Activity', 'get', [
+      'contact_id' => $contactId,
+      'options' => ['limit' => 0],
+      'return' => ['id', 'activity_type_id'],
+      'activity_type_id' => ['IN' => $actTypeIds],
+    ]['values']);
+    foreach ($results as $data) {
+      // Not-required, but still need to do validation for being safe.
+      // Check if the activity type needs to be deleted
+      if (in_array($data['activity_type_id'], $actTypeIds)) {
+        self::CiviCRMAPIWrapper('Activity', 'delete', [
+          'id' => $data['id'],
+        ]);
       }
     }
   }
@@ -567,7 +571,7 @@ WHERE url.time_stamp > '{$date}'";
     ));
   }
 
-  
+
   /**
    * Deletes data directly associated with a contact.
    *
@@ -643,14 +647,14 @@ WHERE url.time_stamp > '{$date}'";
       $xmlString = file_get_contents($file);
       $load = $dom->loadXML($xmlString);
       if (!$load) {
-        $status['error'][] = ts("Error loading {$fileName}.xml file while installing");
+        $status['error'][] = E::ts("Error loading {$fileName}.xml file while installing");
       }
       $dom->xinclude();
-      $xml = simplexml_import_dom($dom);     
-      
+      $xml = simplexml_import_dom($dom);
+
       //check CustomGroups are exists
       $mapArray = array(
-        'CustomGroups' => 'CustomGroup', 
+        'CustomGroups' => 'CustomGroup',
         'CustomFields' => 'CustomField',
         'OptionGroups' => 'OptionGroup',
         'OptionValues' => 'OptionValue'
@@ -663,11 +667,11 @@ WHERE url.time_stamp > '{$date}'";
             $customGroup = new $className();
             $customGroup->name = $entitiesXML->name;
             if (!$customGroup->find(TRUE)) {
-              $status['error'][] = ts("$entitiesXML->name {$entities} is not found.");
+              $status['error'][] = E::ts("$entitiesXML->name {$entities} is not found.");
             }
           }
         }
-      }//End foreach map array      
+      }//End foreach map array
     }
 
     return $status;

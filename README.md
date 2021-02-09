@@ -7,7 +7,7 @@ Extension to support General Data Protection Regulation
 
 ### Installation ###
 
-* Install the extension manually in CiviCRM. More details [here](http://wiki.civicrm.org/confluence/display/CRMDOC/Extensions#Extensions-Installinganewextension) about installing extensions in CiviCRM.
+* Install the extension manually in CiviCRM. More details [here](https://docs.civicrm.org/sysadmin/en/latest/customize/extensions/#installing-a-new-extension) about installing extensions in CiviCRM.
 * Fill in GDPR settings (Navigate to Contacts >> GDPR Dashboard or navigate to civicrm/gdpr/settings)
 
 ### Usage ###
@@ -18,15 +18,15 @@ Extension to support General Data Protection Regulation
   * Delete contact's email/address/phone/IM/website.
   * Cancel all active memberships and update to 'GDPR Cancelled' status using staus override.
 * Custom search 'Search Group Subscription by Date Range' which can be accessed from GDPR Dashboard.
-* Access list of contacts who have not had any activity for a set period of days from GDPR Dashboard and perform action on the contacts.
+* Access list of contacts who have not had any activity for a set period of days from GDPR Dashboard and perform action on the contacts. This will help to get a list of contacts who did not have a particular set of activities and can be deleted from GDPR Dashboard by clicking on numaric value of "No of contacts".
 * Sitewide Data Policy acceptance can be configured from within GDPR Settings.
 * Event settings have a new tab to set Terms and Conditions which are added to the registration form.
 * A Communications Preferences page at civicrm/gdpr/comms-prefs/update allows contacts to update their channels and group subscriptions. The settings for this can be reached from the GDPR Dashboard. There are tokens and an action link available to generate personalized links (with checksum) to the Communications Preferences page.
 
 ### Documentation ###
 
-View the [GDPR 
-documentation](https://docs.civicrm.org/gdpr/en/latest/) at 
+View the [GDPR
+documentation](https://docs.civicrm.org/gdpr/en/latest/) at
 https://docs.civicrm.org/.
 
 ### Support ###
@@ -35,20 +35,36 @@ support (at) vedaconsulting.co.uk
 
 ### Change Log ###
 
+v3.0
+Includes:
+* Value for 'is_deceased' of the contact is left unchanged while a contact is being Anonymized # 235
+* Check for the existence of the selected profile # 231
+* Fix for the Event Registration form # 211
+
+v2.9
+Includes:
+* Added the setting to choose whether exports should be tracked.
+
+v2.8
+
+Includes:
+* Save information that data was exported - #157
+* Various fixes.
+
 v2.7
 
 Includes:
 * Data Policy/T&C web page link instead of uploaded file - #97
 * Capture T&C condition field for new contacts - #123
-* Fatal Error making contribution after redirect #118 
+* Fatal Error making contribution after redirect #118
 * Anon overwriting current user #121,  Inherit profile's duplicate match option #127
 * Comms prefs in contributions and events #129
 * Update all privacy options during 'Forget Me' process #132, #133
 * Forget me should clean out selected custom groups #146
 * Transalation updates
-* What to do with email in case of Forget me action #145  
-* Allow "Forget Me" to optionally delete some activity types #13 
-* Add missing data check and means to fix it. #167 
+* What to do with email in case of Forget me action #145
+* Allow "Forget Me" to optionally delete some activity types #13
+* Add missing data check and means to fix it. #167
 * Default terms and condition text #172, #165
 * Navigation Menu item for multi domain #183
 
@@ -98,4 +114,4 @@ v2.2
 
 v2.1
 * Various fixes
-* 4.6 Compatibility 
+* 4.6 Compatibility

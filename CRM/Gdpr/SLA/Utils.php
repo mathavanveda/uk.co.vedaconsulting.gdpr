@@ -108,8 +108,10 @@ EOT;
   static function getContactLastAcceptance($contactId) {
     static $cache = array();
     if (empty($cache[$contactId])) {
+      $field = CRM_Gdpr_SLA_Utils::getTermsConditionsField();
       $result = civicrm_api3('Activity', 'get', array(
         'sequential' => 1,
+        'return' => ['subject', 'activity_date_time', "custom_{$field['id']}"],
         'activity_type_id' => self::$activityTypeName,
         'target_contact_id' => $contactId,
         'options' => array(
@@ -131,17 +133,15 @@ EOT;
    * Records a contact accepting Terms and Conditions.
    */
   static function recordSLAAcceptance($contactId = NULL) {
-    $settings = self::getSettings();
-    $userID   = CRM_Core_Session::singleton()->getLoggedInContactID();
+    $userID = CRM_Core_Session::singleton()->getLoggedInContactID();
     $contactId = $contactId ? $contactId : $userID;
     if (!$contactId) {
       return;
     }
     $termsConditionsUrl = self::getTermsConditionsUrl();
     $termsConditionsField = self::getTermsConditionsField();
-    $termsConditionsFieldKey = 'custom_' . $termsConditionsField['id'];
     //MV 11Oct2018 Incase of offline Data policy acceptance, Update logged in user as source contact
-    $sourceContactID = $userID ? $userID : $contactId;    
+    $sourceContactID = $userID ? $userID : $contactId;
     $params = array(
       'source_contact_id' => $sourceContactID,
       'target_id' => $contactId,
@@ -150,7 +150,7 @@ EOT;
       'activity_type_id' => self::$activityTypeName,
       'custom_' . $termsConditionsField['id'] => $termsConditionsUrl,
     );
-    $result = civicrm_api3('Activity', 'create', $params);
+    civicrm_api3('Activity', 'create', $params);
   }
 
   static function isContactDueAcceptance($contactId = NULL) {
@@ -192,17 +192,21 @@ EOT;
     $url = '';
     $settings = CRM_Gdpr_Utils::getGDPRSettings();
     if (!empty($settings['sla_tc']) || !empty($settings['sla_tc_link'])) {
-      switch ($settings['sla_data_policy_option']) {
-        // File uploaded
-        case 1:
-        default:
-          $url = $settings['sla_tc'];
-          break;
+      if(array_key_exists('sla_data_policy_option', $settings)){
+        switch ($settings['sla_data_policy_option']) {
+          // File uploaded
+          case 1:
+          default:
+            $config = & CRM_Core_Config::singleton();
+            $baseUrl = $config->userFrameworkBaseURL;
+            $url = $baseUrl.$settings['sla_tc'];
+            break;
 
-        // Web page link
-        case 2:
-          $url = $settings['sla_tc_link'];
-          break;
+          // Web page link
+          case 2:
+            $url = $settings['sla_tc_link'];
+            break;
+        }
       }
     }
 

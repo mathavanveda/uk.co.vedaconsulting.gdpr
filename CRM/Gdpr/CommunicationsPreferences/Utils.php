@@ -13,6 +13,7 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
   private static $groups = array();
 
   public static function getSettingsDefaults() {
+    // @fixme This should be replaced with a proper settings definition file (eg. settings/gdpr.setting.php)
     $settings[self::SETTING_NAME] = array(
       'page_title' => E::ts('Communication Preferences'),
       'page_intro' => E::ts('We want to ensure we are only sending you information that is of interest to you, in a way you are happy to receive.'),
@@ -27,7 +28,9 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
       'enable_groups' => 0,
       'groups_heading' => E::ts('Interest groups'),
       'groups_intro' => E::ts('We want to continue to keep you informed about our work. Opt-in to the groups that interest you.'),
-      'completion_message' => E::ts('Your communications preferences have been updated. Thank you.')
+      'completion_message' => E::ts('Your communications preferences have been updated. Thank you.'),
+      'add_captcha' => 0,
+      'comm_pref_in_thankyou' => 'none',
     );
 
     foreach (self::getGroups() as $group) {
@@ -49,6 +52,7 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
    *  Whether to use default values if the settings do not exist.
    */
   public static function getSettings($use_defaults = TRUE) {
+    // @fixme: We should be using settings/gdpr.setting.php and \Civi::settings()->get() instead of this.
     $settings = array();
     $defaults = $use_defaults ? self::getSettingsDefaults() : array();
     foreach (array(self::SETTING_NAME, self::GROUP_SETTING_NAME) as $setting_name) {
@@ -73,12 +77,12 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
    */
   public static function getProfileOptions() {
     $types = array('Individual', 'Contact');
-    
+
     //To get Profile with array of group type
-    //using core method to get the profiles, because group_type has been imploded with (,) in database civicrm_uf_group. 
+    //using core method to get the profiles, because group_type has been imploded with (,) in database civicrm_uf_group.
     //for eg group type can be Individual,Contact or Contact,Individual . so api didn't return all the result where profiles with group type Individual or Contact. (have to mention 'Individual,Contact')
     //we can use core method to get all profiles which are Individual or Contact or Both
-    
+
     $profiles = CRM_Core_BAO_UFGroup::getProfiles($types);
 
     $options = array(0 => '-- Please select --') + $profiles;
@@ -207,7 +211,7 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
       'activity_type_id' => "Update_Communication_Preferences",
       // 'source_contact_id' => $cid,
       //MV: Civi Older version doesn't return api value using source_contact_id. if we add target_contact_id then BAO query include activity contact table and filter out using params
-      'target_contact_id' => $cid,      
+      'target_contact_id' => $cid,
       'options' => array('sort' => "id desc"),
     ));
     return !empty($result['values']) ? $result['values'][0] : $return;
@@ -226,6 +230,14 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
     );
   }
 
+  public static function getCommunicationPreferenceMapperField() {
+    return array(
+      'email' => ['do_not_email', 'is_opt_out'],
+      'phone' => ['do_not_phone'],
+      'post' => ['do_not_mail'],
+      'sms' => ['do_not_sms'],
+    );
+  }
   public static function getCommunicationPreferenceMapper() {
     return array(
       'email' => array(
@@ -341,6 +353,7 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
     $isChannelsEnabled = $fieldsSettings['enable_channels'];
     if ($isChannelsEnabled) {
       if ($channelIntro = $fieldsSettings['channels_intro']) {
+        $channelIntro = preg_replace("/[\r\n]*/", "", $channelIntro);
         $form->assign('channels_intro', $channelIntro);
       }
 
@@ -401,6 +414,81 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
   }
 
   /**
+   * Gets Channel preferences for a Contact.
+   *
+   * @param int $contactId
+   */
+  public static function getChannelPrefsForContact($contactId) {
+    $contactDetails = civicrm_api3('Contact', 'getsingle', ['id' => $contactId]);
+    $lastAcceptance = CRM_Gdpr_SLA_Utils::getContactLastAcceptance($contactId);
+    $settings = self::getSettings();
+    $fieldSettings = $settings[self::SETTING_NAME];
+    $groupSettings  = $settings[self::GROUP_SETTING_NAME];
+
+    $communicationPreferenceMapperFields = self::getCommunicationPreferenceMapperField();
+    $values = [];
+    foreach ($fieldSettings['channels'] as $key => $value) {
+      $name  = str_replace('enable_', '', $key);
+      if (!$lastAcceptance) {
+        // No acceptance, and preferences are 0 then, set unknown, otherwise display yes/no
+        $values[$key] = '';
+      }
+      elseif ($value) {
+        $comPref = FALSE;
+        foreach ($communicationPreferenceMapperFields[$name] as $fieldName) {
+          if (!empty($contactDetails[$fieldName])) {
+            $comPref = TRUE;
+            break;
+          }
+        }
+        $values[$key] = $comPref ? 'NO' : 'YES';
+      }
+    }
+    return $values;
+  }
+
+  /**
+   * Returns name for Channel select element in Comms Prefs form.
+   *
+   * @param string $channel
+   * @return string
+   */
+  public static function channelElementName($channel) {
+    return 'enable_' . $channel;
+  }
+
+  /**
+   * Gets group selections for a contact.
+   *
+   * Can be used as defaults for Comms Prefs form.
+   *
+   * @param int $contactId
+   * @return []
+   */
+  public static function getGroupSelectionsForContact($contactId) {
+    $values = [];
+    $groups = self::getGroups();
+    $settings = self::getSettings();
+    $groupSettings  = $settings[self::GROUP_SETTING_NAME];
+    foreach ($groups as $group) {
+      $container_name = 'group_' . $group['id'];
+      if (!empty($groupSettings[$container_name]['group_enable'])) {
+        $contactGroupDetails = civicrm_api3('GroupContact', 'get', [
+          'contact_id' => $contactId,
+           'group_id' => $group['id'],
+           'status' => 'Added',
+          ]
+        );
+
+        if (!empty($contactGroupDetails['id'])) {
+          $values[$container_name] = 1;
+        }
+      }
+    }
+    return $values;
+  }
+
+  /**
    * This is helper function to update communication preference by form submitted values.
    */
   public static function updateCommsPrefByFormValues($contactId, $submittedValues) {
@@ -413,19 +501,60 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
     $fieldsSettings = $settings[self::SETTING_NAME];
     $groupSettings  = $settings[self::GROUP_SETTING_NAME];
     $commPrefMapper = self::getCommunicationPreferenceMapper();
-
+    $preferedCommOptn = CRM_Core_PseudoConstant::get('CRM_Contact_DAO_Contact', 'preferred_communication_method');
     //Prepare Comm pref params
     $commPref = array('id' => $contactId);
+
+    // get existing preferred communication methods
+    $existingPreferredMethod = NULL;
+    try {
+      $apiResult = civicrm_api3('Contact', 'getsingle', array(
+        'return' => array("preferred_communication_method"),
+        'id' => $contactId,
+      ));
+
+      $existingPreferredMethod = $apiResult['preferred_communication_method'];
+      $existingPreferredMethod = array_fill_keys($existingPreferredMethod, 1);
+    } catch (Exception $e) {
+      CRM_Core_Error::debug_var('updateCommsPrefByFormValues', $e);
+    }
 
     //FIXME, this must go under constant file
     $containerPrefix = 'enable_';
 
     //Update contact communication preference based on channels selected
+    $selectedPreferredOptns = $preferredComm = array();
     foreach ($fieldsSettings['channels'] as $key => $value) {
       $name  = str_replace($containerPrefix, '', $key);
       if (!empty($submittedValues[$key])) {
         $channelValue = $submittedValues[$key];
         $commPref = array_merge($commPref, $commPrefMapper[$name][$channelValue]);
+
+        if ($name == 'post') {
+          $name = 'postal mail';
+        }
+
+        $prefComm = array_search($name, array_map('strtolower', $preferedCommOptn));
+        if (strtolower($channelValue) == 'yes') {
+          $selectedPreferredOptns[$prefComm] = 1;
+        }
+        elseif (strtolower($channelValue) == 'no') {
+          $selectedPreferredOptns[$prefComm] = 0;
+        }
+      }
+    }
+
+    // Format preferred communication method
+    if (!empty($selectedPreferredOptns)) {
+      // don't want to lose exising methods which is not in communication preferences ex:Fax
+      if (!empty($existingPreferredMethod)) {
+        $selectedPreferredOptns = $selectedPreferredOptns + $existingPreferredMethod;
+      }
+
+      CRM_Utils_Array::formatArrayKeys($selectedPreferredOptns);
+      if (!empty($selectedPreferredOptns)) {
+        $prefOptn  = array_intersect_key($preferedCommOptn, array_flip($selectedPreferredOptns));
+        $commPref['preferred_communication_method'] = array_values($prefOptn);
       }
     }
 
@@ -489,11 +618,17 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
     return FALSE;
   }
 
+  /**
+   * @param int $cid
+   * @param \CRM_Core_Form $form
+   * @param string $entity
+   *
+   * @throws \CRM_Core_Exception
+   */
   public static function commsPreferenceInThankyouPage($cid, &$form, $entity = 'Event') {
     if (empty($cid)) {
       return;
     }
-
 
     $settings = self::getSettings();
     $fieldsSettings = $settings[self::SETTING_NAME];
@@ -505,22 +640,30 @@ class CRM_Gdpr_CommunicationsPreferences_Utils {
     $form->assign('comm_pref_in_thankyou', $fieldsSettings['comm_pref_in_thankyou']);
     switch ($fieldsSettings['comm_pref_in_thankyou']) {
       case 'embed':
+
           $ajax_permission[] = array('access AJAX API', 'access CiviCRM');
           if (CRM_Core_Permission::check($ajax_permission)) {
+            $form->assign('noperm', 0);
             // Inject comms preference fields in contribution thank you page.
             self::injectCommPreferenceFieldsIntoForm($form);
+            $channelDefaults = self::getChannelPrefsForContact($cid);
+            $groupDefaults = self::getGroupSelectionsForContact($cid);
+            $defaults = array_merge($groupDefaults, $channelDefaults);
+            $form->setDefaults($defaults);
           }
           else {
             $form->add('hidden', 'noperm', '1');
-
+            $form->assign('noperm', 1);
           }
         break;
+
       case 'link':
           self::addCommsPreferenceLinkInThankYouPage($cid, $form, $entity);
         break;
+
       default:
         break;
+
     }
-    return TRUE;
   }
 }

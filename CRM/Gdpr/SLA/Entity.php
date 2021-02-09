@@ -1,4 +1,5 @@
 <?php
+use CRM_Gdpr_ExtensionUtil as E;
 /**
  * @file
  *  Base class for Terms and Conditions relating to a particular entity.
@@ -18,14 +19,14 @@ class CRM_Gdpr_SLA_Entity {
   protected $activityType = '';
 
   protected $activityCustomGroup = '';
-  
+
   /**
    * Name in the settings to look up whether Terms & Conditions
    * behaviour is globally enabled for this type.
    */
   protected $enabledSetting = '';
   protected $urlSetting = '';
-  
+
   /**
    * Default values are provided in the GDPR settings.
    */
@@ -52,7 +53,7 @@ class CRM_Gdpr_SLA_Entity {
     }
     return $entityEnabled || $typeEnabled;
   }
-  
+
   public function getCheckboxPosition() {
     return $this->getValue('Checkbox_Position');
   }
@@ -85,7 +86,7 @@ class CRM_Gdpr_SLA_Entity {
     }
     $global_link_url = CRM_Gdpr_SLA_Utils::getTermsConditionsUrl();
     $global_link_label = CRM_Gdpr_SLA_Utils::getLinkLabel();
-    $global_checkbox_text = CRM_Gdpr_SLA_Utils::getCheckboxText(); 
+    $global_checkbox_text = CRM_Gdpr_SLA_Utils::getCheckboxText();
     if ($global_link_url) {
     $links['global'] = array(
         'url' => $global_link_url,
@@ -170,19 +171,21 @@ class CRM_Gdpr_SLA_Entity {
         $position = $settings['entity_tc_position'];
         $links = $this->getLinks();
         $links['entity']['label'] = $settings['entity_tc_link_label'];
-        switch ($settings['entity_tc_option']) {
-          // File uploaded
-          case 1:
-          default:
-            $links['entity']['url'] = $settings['entity_tc'];
-            break;
+        if(array_key_exists('entity_tc_option', $settings)){
+          switch ($settings['entity_tc_option']) {
+            // File uploaded
+            case 1:
+            default:
+              $links['entity']['url'] = $settings['entity_tc'];
+              break;
 
-          // Web page link
-          case 2:
-            $links['entity']['url'] = $settings['entity_tc_link'];
-            break;
+            // Web page link
+            case 2:
+              $links['entity']['url'] = $settings['entity_tc_link'];
+              break;
+          }
         }
-        
+
         $text = $settings['entity_tc_checkbox_text'];
       }
     }
@@ -221,7 +224,7 @@ class CRM_Gdpr_SLA_Entity {
       ));
     }
   }
-  
+
   /**
    * Get a value from the GDPR settings.
    */
@@ -234,13 +237,13 @@ class CRM_Gdpr_SLA_Entity {
   public function recordAcceptance($contactId = NULL) {
     $contactId = $contactId ? $contactId : CRM_Core_Session::singleton()->getLoggedInContactID();
     $fields = $this->getCustomFields($this->activityCustomGroup);
-    $url = $this->getUrl(TRUE);
+    $url = $this->getUrl();
     $entity = $this->getEntity();
     $source = $this->type . ': ' .  $entity['title'] . ' (' . $entity['id'] . ')';
     $params = array(
       'source_contact_id' => $contactId,
       'target_id' => $contactId,
-      'subject' => $this->type . ' Terms and Conditions accepted',
+      'subject' => $this->type . E::ts(' Terms and Conditions accepted'),
       'status_id' => 'Completed',
       'activity_type_id' => $this->activityType,
       'custom_' . $fields['Terms_Conditions']['id'] => $url,

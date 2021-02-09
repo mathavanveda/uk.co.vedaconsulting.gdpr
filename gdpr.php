@@ -36,7 +36,7 @@ function gdpr_civicrm_install() {
   ));
   if (empty($result['id'])) {
     $result = civicrm_api3('OptionValue', 'create', [
-      'label'           => ts('Contribution Page'),
+      'label'           => E::ts('Contribution Page'),
       'name'            => 'civicrm_contribution_page',
       'value'           => 'ContributionPage',
       'option_group_id' => 'cg_extend_objects',
@@ -240,6 +240,15 @@ EOD;
 }
 
 /**
+ * Implements hook_civicrm_preProcess().
+ */
+function gdpr_civicrm_preProcess($formName, $form) {
+  if ($formName == 'CRM_Contribute_Form_Contribution_ThankYou') {
+    $form->setVar('_contactID', $form->get('contactID'));
+  }
+}
+
+/**
  * Implements hook_civicrm_buildForm().
  */
 function gdpr_civicrm_buildForm($formName, $form) {
@@ -277,12 +286,6 @@ function gdpr_civicrm_buildForm($formName, $form) {
   if ($formName == 'CRM_Contribute_Form_Contribution_ThankYou') {
     // Contact id for logged in user.
     $cid = $form->_contactID;
-    if (!$cid) {
-      $trxnId = $form->getVar('_trxnId');
-      if ($trxnId) {
-        $cid = CRM_Core_DAO::getFieldValue('CRM_Contribute_DAO_Contribution', $trxnId, 'contact_id', 'trxn_id');
-      }
-    }
     if ($cid) {
       $templatePath = realpath(dirname(__FILE__) . '/templates');
       CRM_Core_Region::instance('page-body')->add(
@@ -311,6 +314,8 @@ function gdpr_civicrm_buildForm($formName, $form) {
       CRM_Utils_System::redirect($commsPrefsUrl);
     }
   }
+
+  gdpr_includeShoreditchStylingIfEnabled();
 }
 
 /**
@@ -327,8 +332,8 @@ function gdpr_civicrm_postProcess($formName, $form) {
       $tc = new CRM_Gdpr_SLA_ContributionPage($contribution_page_id);
       if ($tc->isEnabled(TRUE)) {
         $tc->recordAcceptance($contact_id);
-        CRM_Gdpr_SLA_Utils::recordSLAAcceptance($contact_id);
-        $form->_params['gdprAccepted'] = TRUE;
+	CRM_Gdpr_SLA_Utils::recordSLAAcceptance($contact_id);
+	$form->_params['gdprAccepted'] = TRUE;
       }
     }
   }
@@ -377,10 +382,11 @@ function gdpr_civicrm_tabset($tabsetName, &$tabs, $context) {
  * Implements hook_civicrm_export().
  */
 function gdpr_civicrm_export($exportTempTable, $headerRows, $sqlColumns, $exportMode, $componentTable = '', $ids = []) {
-  if (version_compare(CRM_Utils_System::version(), '5.8.0', '>=')) {
+  $trackExports = CRM_Core_BAO_Setting::getItem(CRM_Gdpr_Constants::GDPR_SETTING_GROUP,'track_exports',NULL, FALSE);
+  if (version_compare(CRM_Utils_System::version(), '5.8.0', '>=') && $trackExports) {
     switch ($exportMode) {
       case CRM_Export_Form_Select::CONTACT_EXPORT:
-        CRM_Gdpr_Export::contact($componentTable);
+        CRM_Gdpr_Export::contact($ids);
         break;
 
       case CRM_Export_Form_Select::ACTIVITY_EXPORT:
@@ -483,7 +489,7 @@ function gdpr_civicrm_navigationMenu( &$params ) {
     $maxKey = max( array_keys($params[$contactsMenuId]['child']));
     $params[$contactsMenuId]['child'][$maxKey+1] =  array (
       'attributes' => array (
-        'label'      => 'GDPR Dashboard',
+        'label'      => E::ts('GDPR Dashboard'),
         'name'       => 'GDPR Dashboard',
         'url'        => 'civicrm/gdpr/dashboard?reset=1',
         'permission' => 'access GDPR',
@@ -536,6 +542,7 @@ function gdpr_civicrm_tokenValues(&$values, $cids, $job = null, $tokens = array(
     IN FUTURE or V3.0, WE CAN REMOVE THIS CHANGE ALONG WITH CONTACT CUSTOM TOKEN ABOVE.
     */
     $tokenValues = array();
+    $cids = isset($cids) ? $cids : [];
     if ($context == 'CRM_Core_BAO_ActionSchedule') {
       list($tokenValues) = CRM_Utils_Token::getTokenDetails($cids,
         array(),
@@ -564,7 +571,7 @@ function gdpr_civicrm_tokenValues(&$values, $cids, $job = null, $tokens = array(
  */
 function gdpr_civicrm_summaryActions( &$actions, $contactID ) {
   $actions['comm_pref'] = array(
-    'title' => 'Communication Preferences Link',
+    'title' => E::ts('Communication Preferences Link'),
     //need a weight parameter here, Contact BAO looking for weight key and returning notice message.
     'weight' => 60,
     'ref' => 'comm_pref',
@@ -574,30 +581,31 @@ function gdpr_civicrm_summaryActions( &$actions, $contactID ) {
 }
 
 function gdpr_civicrm_permission(&$permissions) {
-  $prefix = E::ts('GDPR') . ': ';
-  $version = CRM_Utils_System::version();
-  if (version_compare($version, '4.6.1') >= 0) {
-    $permissions += array(
-      'access GDPR' => array(
-        $prefix . E::ts('access GDPR'),
-        E::ts('View GDPR related information'),
-      ),
-      'forget contact' => array(
-        $prefix . E::ts('forget contact'),
-        E::ts('Anonymize contacts'),
-      ),
-      'administer GDPR' => array(
-        $prefix . E::ts('administer GDPR'),
-        E::ts('Manage GDPR settings'),
-      ),
-    );
-  }
-  else {
-    $permissions += array(
-      'access GDPR' => $prefix . E::ts('access GDPR'),
-      'forget contact' => $prefix . E::ts('forget contact'),
-      'administer GDPR' => $prefix . E::ts('administer GDPR'),
-    );
+  $prefix = E::ts('CiviGDPR') . ': ';
+  $permissions += array(
+    'access GDPR' => array(
+      $prefix . E::ts('access GDPR'),
+      E::ts('View GDPR related information'),
+    ),
+    'forget contact' => array(
+      $prefix . E::ts('forget contact'),
+      E::ts('Anonymize contacts'),
+    ),
+    'administer GDPR' => array(
+      $prefix . E::ts('administer GDPR'),
+      E::ts('Manage GDPR settings'),
+    ),
+  );
+}
+
+function gdpr_civicrm_searchTasks( $objectName, &$tasks ){
+  if($objectName == 'contact'){
+    if(user_access('forget contact')) {
+      $tasks[] = [
+        'title' => 'GDPR forget',
+        'class' => 'CRM_Gdpr_Form_Task_Contact'
+      ];
+    }
   }
 }
 
@@ -624,4 +632,38 @@ function gdpr_civicrm_pageRun( &$page ) {
   if ($pageName == 'CRM_Event_Page_EventInfo') {
     CRM_Core_Resources::singleton()->addStyleFile('uk.co.vedaconsulting.gdpr', 'css/gdpr.css');
   }
+
+  gdpr_includeShoreditchStylingIfEnabled();
+}
+
+/**
+ * Checks if an extension is enabled
+ *
+ * @param string $key
+ *   extension key
+ *
+ * @return bool
+ */
+function gdpr_isExtensionEnabled($key) {
+  $isEnabled = CRM_Core_DAO::getFieldValue(
+    'CRM_Core_DAO_Extension',
+    $key,
+    'is_active',
+    'full_name'
+  );
+  return !empty($isEnabled);
+}
+
+/**
+ * Includes Shoreditch styling for the extension, if Shoreditch is enabled
+ *
+ * @return void
+ */
+function gdpr_includeShoreditchStylingIfEnabled () {
+  if (!gdpr_isExtensionEnabled('org.civicrm.shoreditch')) {
+    return;
+  }
+
+  CRM_Core_Resources::singleton()->
+    addStyleFile('uk.co.vedaconsulting.gdpr', 'css/shoreditch-only.min.css', 10);
 }
